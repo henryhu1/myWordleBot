@@ -1,0 +1,5 @@
+{
+    "discordId": 245723036198764546,
+    "name": "papipupepo",
+    "wins": 6
+}
