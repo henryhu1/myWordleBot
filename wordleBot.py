@@ -1,10 +1,12 @@
 import discord
+import heapq
 import json
 import os
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
+from datetime import timedelta
 from discord.ext import commands
 from dotenv import load_dotenv
 from pytz import timezone
@@ -31,13 +33,14 @@ wordleResultList = [[], [], [], [], [], [], []]
 playedAlreadySet = set()
 
 class WordlePlayer:
-    def __init__(self, discordId, name, wins):
+    def __init__(self, discordId, name, wins, guessPriorityOrder):
         self.discordId = discordId
         self.name = name
         # self.totalPlayed = 0
         # self.totalGuesses = 0
         # self.avgGuesses = 0
         self.wins = wins
+        self.guessPriorityOrder = guessPriorityOrder
 
     def toJson(self):
         return json.dumps(self, default = lambda o: o.__dict__, sort_keys = True, indent = 4)
@@ -45,12 +48,23 @@ class WordlePlayer:
     def __repr__(self):
         return self.name
 
+    def __lt__(self, other):
+        return self.guessPriorityOrder < other.guessPriorityOrder
+
+def singularPluralDecider(singular, plural, value):
+    return singular if value == 1 else plural
+
+def getTodaysWordle():
+    return (datetime.now(tz) - FIRST_WORDLE_DAY).days
+
 def filterExistingPlayers(discordId):
     return list(filter(lambda player: (player.discordId == discordId) , wordlePlayerSet))
 
-def createPlayer(discordId, name):
-    newPlayer = WordlePlayer(discordId, name, 0)
+def createPlayer(discordId, name, priority):
+    newPlayer = WordlePlayer(discordId, name, 0, priority)
     wordlePlayerSet.add(newPlayer)
+    with open('players.txt', 'a') as f:
+        f.write(f'{newPlayer.toJson()}\n')
     return newPlayer
 
 def getStanding(final):
@@ -82,11 +96,12 @@ async def finalResults():
     playedAlreadySet = set()
     wordleResultList.clear()
     wordleResultList = [[], [], [], [], [], [], []]
+    open('playersToday.txt', 'w').close()
 
 @bot.event
 async def on_ready():
-    currentWordle = (datetime.now(tz) - FIRST_WORDLE_DAY).days
-    print(datetime.now(tz), currentWordle)
+    global wordleResultList
+    print('on_ready - right now and today\'s Wordle number', datetime.now(tz), getTodaysWordle())
     f = open("players.txt", "r")
     playerJson = ''
     for line in f.readlines():
@@ -94,8 +109,25 @@ async def on_ready():
         if '}' in line:
             playerData = json.loads(playerJson)
             playerJson = ''
-            newPlayer = WordlePlayer(playerData['discordId'], playerData['name'], playerData['wins'])
+            newPlayer = WordlePlayer(playerData['discordId'], playerData['name'], playerData['wins'], -1)
             wordlePlayerSet.add(newPlayer)
+    f.close()
+
+    f = open("playersToday.txt", "r")
+    existingResults = [[], [], [], [], [], [], []]
+    for line in f.readlines():
+        playedToday = json.loads(line)
+        print(playedToday['discordId'], playedToday['guessIndex'], playedToday['priority'])
+        player = filterExistingPlayers(playedToday['discordId'])
+        if (len(player) != 0):
+            player[0].guessPriorityOrder = playedToday['priority']
+            existingResults[playedToday['guessIndex']].append(player[0])
+            playedAlreadySet.add(playedToday['discordId'])
+    f.close()
+
+    for bucket in existingResults:
+        heapq.heapify(bucket)
+    wordleResultList = existingResults
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(finalResults, CronTrigger(hour=3, minute=59, second=59)) 
@@ -114,30 +146,36 @@ async def on_message(message):
         result = wordleMessage[2].split('/')
         totalAttempts = result[1]
         guesses = wordleMessage[3:]
-        currentWordle = (datetime.now(tz) - FIRST_WORDLE_DAY).days
-        print(currentWordle)
+        currentWordle = getTodaysWordle()
+        print('on_message - currentWordle', currentWordle)
         if not gameNumber.isdigit() or int(gameNumber) != currentWordle:
             await message.channel.send('That Wordle game is not today\'s game!')
         elif len(result) != 2:
-            raise discord.DiscordException
+            await message.channel.send('{0} is not a valid result!'.format(wordleMessage[2]))
         elif totalAttempts != "6":
             await message.channel.send('There should be 6 attempts, not {0}!'.format(totalAttempts))
         else:
             correctOn = result[0]
             discordId = message.author.id
-            if correctOn == "X" or correctOn.isdigit() and int(correctOn) <= 6 and int(correctOn) == len(guesses):
+            if correctOn == "X" or correctOn.isdigit() and 0 < int(correctOn) <= 6 and int(correctOn) == len(guesses):
                 if discordId in playedAlreadySet:
                     await message.channel.send('You already played today\'s Wordle!')
                 else:
                     guessIndex = 6 if correctOn == "X" else int(correctOn) - 1
+                    guessResultList = wordleResultList[guessIndex]
                     await message.add_reaction(WORDLE_GAME_REACTIONS[guessIndex])
                     existing = filterExistingPlayers(discordId)
-                    if len(existing) == 0:
-                        await message.channel.send('New Wordle player!?')
-                        newPlayer = createPlayer(discordId, message.author.name)
-                        wordleResultList[guessIndex].append(newPlayer)
+                    if len(existing) != 0:
+                        existing[0].guessOrderPriority = len(guessResultList)
+                        guessResultList.append(existing[0])
                     else:
-                        wordleResultList[guessIndex].append(existing[0])
+                        await message.channel.send('New Wordle player!?')
+                        newPlayer = createPlayer(discordId, message.author.name, len(guessResultList))
+                        guessResultList.append(newPlayer)
+                    with open('playersToday.txt', 'a') as f:
+                        playerTodayDict = { "discordId": discordId, "guessIndex": guessIndex, "priority": len(guessResultList) }
+                        json.dump(playerTodayDict, f)
+                        f.write('\n')
                     playedAlreadySet.add(discordId)
             else:
                 raise discord.DiscordException
@@ -165,12 +203,19 @@ async def getPlayerInfo(ctx):
     if len(player) == 0:
         await ctx.send('You haven\'t played Wordle before...')
     else:
-        await ctx.send('{0.name} has {0.wins} {1}'.format(player[0], 'win' if player[0].wins == 1 else 'wins'))
+        await ctx.send('{0.name} has {0.wins} {1}'.format(player[0], singularPluralDecider('win', 'wins', player[0].wins)))
 
 @bot.command(name = 'Today')
 async def getCurrentStandings(ctx):
-    currentWordle = (datetime.now(tz) - FIRST_WORDLE_DAY).days
-    await ctx.send('Standings for Wordle {0} so far!\n{1}'.format(currentWordle, getStanding(False)))
+    rightNow = datetime.now(tz)
+    midnight = (rightNow + timedelta(days = 1)).replace(hour = 0, minute = 0, second = 0, microsecond = 0)
+    remainingTime = (midnight - rightNow).seconds
+    print('WrdToday - hours left', remainingTime // 3600)
+    remainingHours = remainingTime // 3600
+    hoursString = singularPluralDecider('hour', 'hours', remainingHours)
+    remainingMinutes = (remainingTime - remainingHours * 3600) // 60
+    minutesString = singularPluralDecider('minute', 'minutes', remainingMinutes)
+    await ctx.send('Standings for Wordle {0} so far!\n{1}\nThere\'s still {2} {3} and {4} {5} left to play today\'s Wordle!'.format(getTodaysWordle(), getStanding(False), remainingHours, hoursString, remainingMinutes, minutesString), embed = WORDLE_LINK)
 
 @bot.command(name = 'Rankings')
 async def getRankings(ctx):
@@ -184,13 +229,13 @@ async def getRankings(ctx):
             standing += 1
         result += str(standing) + ': ' + player.name
         result += ' - ' + str(player.wins) + ' '
-        result += '{0}'.format('win' if player.wins == 1 else 'wins') + '\n'
+        result += singularPluralDecider('win', 'wins', player.wins) + '\n'
     await ctx.send('Current Wordle rankings!\n{0}'.format('No one has ever played Wordle...' if result == '' else result))
 
 @bot.command(name = 'Bot')
 async def botInfo(ctx):
     daysAgo = (datetime.now(tz) - START).days
-    await ctx.send('Started keeping track on Wordle {0} ({1} {2} ago)'.format(STARTING_WORDLE.days, daysAgo, 'day' if daysAgo == 1 else 'days'))
+    await ctx.send('Started keeping track on Wordle {0} ({1} {2} ago)'.format(STARTING_WORDLE.days, daysAgo, singularPluralDecider('day', 'days', daysAgo)))
 
 @bot.command(name = 'Help')
 async def help(ctx):
