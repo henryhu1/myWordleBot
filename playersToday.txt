@@ -1,0 +1,5 @@
+{"discordId": 275707420595191808, "guessIndex": 5, "priority": 1}
+{"discordId": 216427375657746432, "guessIndex": 2, "priority": 1}
+{"discordId": 297734495518457856, "guessIndex": 4, "priority": 1}
+{"discordId": 210926124983779328, "guessIndex": 2, "priority": 2}
+{"discordId": 245723036198764546, "guessIndex": 3, "priority": 1}

@@ -1,5 +1,36 @@
 {
     "discordId": 245723036198764546,
+    "guessPriorityOrder": 0,
     "name": "papipupepo",
-    "wins": 6
+    "wins": 2
+}
+{
+    "discordId": 210926124983779328,
+    "guessPriorityOrder": 0,
+    "name": "aaggarwal10",
+    "wins": 0
+}
+{
+    "discordId": 297734495518457856,
+    "guessPriorityOrder": 0,
+    "name": "d.",
+    "wins": 1
+}
+{
+    "discordId": 216427375657746432,
+    "guessPriorityOrder": 0,
+    "name": "fedex",
+    "wins": 1
+}
+{
+    "discordId": 275707420595191808,
+    "guessPriorityOrder": 0,
+    "name": "kaitokid",
+    "wins": 0
+}
+{
+    "discordId": 429705500377088002,
+    "guessPriorityOrder": 0,
+    "name": "pay2lose",
+    "wins": 1
 }

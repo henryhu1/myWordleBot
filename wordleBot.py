@@ -23,8 +23,10 @@ bot = commands.Bot(command_prefix = 'Wrd')
 WORDLE_LINK = discord.Embed()
 WORDLE_LINK.description = "https://www.nytimes.com/games/wordle/index.html"
 
-FIRST_WORDLE_DAY = datetime(2021, 6, 19, 0, 0, 0, tzinfo=tz)
-START = datetime(2022, 8, 7, 0, 0, 0, tzinfo=tz)
+FIRST_WORDLE_DAY = tz.localize(datetime(2021, 6, 19, 0, 0, 0))
+START = tz.localize(datetime(2022, 8, 7, 0, 0, 0))
+print(datetime.now(tz))
+print(FIRST_WORDLE_DAY)
 STARTING_WORDLE = START - FIRST_WORDLE_DAY
 WORDLE_GAME_REACTIONS = ['\U0001F440', '\U0001F9E0', '\U0001F525', '\U0001F44D', '\U0001F921', '\U0001F4A9', '\U0001F44E']
 
@@ -55,6 +57,8 @@ def singularPluralDecider(singular, plural, value):
     return singular if value == 1 else plural
 
 def getTodaysWordle():
+    print(datetime.now(tz))
+    print(FIRST_WORDLE_DAY)
     return (datetime.now(tz) - FIRST_WORDLE_DAY).days
 
 def filterExistingPlayers(discordId):
@@ -210,7 +214,7 @@ async def getCurrentStandings(ctx):
     rightNow = datetime.now(tz)
     midnight = (rightNow + timedelta(days = 1)).replace(hour = 0, minute = 0, second = 0, microsecond = 0)
     remainingTime = (midnight - rightNow).seconds
-    print('WrdToday - hours left', remainingTime // 3600)
+    print('WrdToday - now, today #, hours left', rightNow, getTodaysWordle(), remainingTime // 3600)
     remainingHours = remainingTime // 3600
     hoursString = singularPluralDecider('hour', 'hours', remainingHours)
     remainingMinutes = (remainingTime - remainingHours * 3600) // 60
